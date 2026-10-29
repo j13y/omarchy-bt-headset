@@ -1,0 +1,20 @@
+#!/bin/bash
+# Actions for the j13y.bt-headset widget.
+#   reconnect <mac> | disconnect <mac> | profile <card> <profile> | watchdog on|off
+
+reconnect_script="$HOME/.config/hypr/scripts/bt-audio-reconnect.sh"
+watchdog_unit="bt-audio-watchdog.service"
+
+case $1 in
+  reconnect)  exec "$reconnect_script" "$2" ;;
+  disconnect) exec bluetoothctl disconnect "$2" ;;
+  profile)    exec pactl set-card-profile "$2" "$3" ;;
+  watchdog)
+    case $2 in
+      on)  exec systemctl --user enable --now "$watchdog_unit" ;;
+      off) exec systemctl --user disable --now "$watchdog_unit" ;;
+    esac ;;
+esac
+
+echo "usage: $0 reconnect <mac> | disconnect <mac> | profile <card> <profile> | watchdog on|off" >&2
+exit 2

@@ -1,0 +1,51 @@
+#!/bin/bash
+# Print JSON state of the first connected Bluetooth audio card (PipeWire),
+# plus the bt-audio-watchdog service and the last transport failure today.
+
+card_json=$(pactl -f json list cards 2>/dev/null | jq -c '[.[] | select(.name | startswith("bluez_card."))][0] // empty')
+
+watchdog_unit="bt-audio-watchdog.service"
+wd_enabled=$(systemctl --user is-enabled "$watchdog_unit" 2>/dev/null)
+wd_active=$(systemctl --user is-active "$watchdog_unit" 2>/dev/null)
+
+last_failure=$(journalctl --user -u wireplumber --since today -o short-unix --no-pager -n1 \
+  -g "Failure in Bluetooth audio transport" 2>/dev/null | awk 'NR==1 && $1 ~ /^[0-9.]+$/ {print int($1)}')
+
+if [[ -z $card_json ]]; then
+  jq -n --arg we "$wd_enabled" --arg wa "$wd_active" --arg lf "$last_failure" \
+    '{connected: false, watchdogInstalled: ($we != "" and $we != "not-found"),
+      watchdogEnabled: ($we == "enabled"), watchdogActive: ($wa == "active"),
+      lastFailure: (if $lf == "" then 0 else ($lf | tonumber) end)}'
+  exit 0
+fi
+
+mac=$(jq -r '.properties["api.bluez5.address"] // .properties["device.string"]' <<<"$card_json")
+mac_us=${mac//:/_}
+
+codec=$(pactl -f json list sinks 2>/dev/null |
+  jq -r --arg m "$mac_us" '[.[] | select(.name | startswith("bluez_output." + $m))][0].properties["api.bluez5.codec"] // ""')
+mic_state=$(pactl -f json list sources 2>/dev/null |
+  jq -r --arg m "$mac" '[.[] | select(.name == "bluez_input." + $m)][0].state // ""')
+
+jq -n --argjson card "$card_json" --arg mac "$mac" --arg codec "$codec" --arg mic "$mic_state" \
+  --arg we "$wd_enabled" --arg wa "$wd_active" --arg lf "$last_failure" '
+  ($card.profiles | to_entries | map(select(.value.available))) as $avail
+  | ($avail | map(select(.key | startswith("a2dp-sink"))) | max_by(.value.priority) | .key // "") as $a2dp
+  | ($avail | map(select(.key | startswith("headset-head-unit"))) | max_by(.value.priority) | .key // "") as $hfp
+  | {
+      connected: true,
+      mac: $mac,
+      name: ($card.properties["device.description"] // $mac),
+      card: $card.name,
+      profile: $card.active_profile,
+      profileKind: (if ($card.active_profile | startswith("a2dp")) then "a2dp"
+                    elif ($card.active_profile | startswith("headset")) then "hfp" else "off" end),
+      codec: $codec,
+      a2dpProfile: $a2dp,
+      hfpProfile: $hfp,
+      micInUse: ($mic == "RUNNING"),
+      watchdogInstalled: ($we != "" and $we != "not-found"),
+      watchdogEnabled: ($we == "enabled"),
+      watchdogActive: ($wa == "active"),
+      lastFailure: (if $lf == "" then 0 else ($lf | tonumber) end)
+    }'

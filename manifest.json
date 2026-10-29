@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "j13y.bt-headset",
+  "name": "BT Headset",
+  "version": "0.1.0",
+  "author": "j13y",
+  "license": "MIT",
+  "description": "Bluetooth headphones status (profile, codec, mic, battery) with reconnect, profile switch and auto-reconnect watchdog toggle.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "BT Headset",
+    "description": "Visible only while Bluetooth headphones are connected. Left click opens the panel, right click reconnects, middle click switches Hi-Fi / Headset (mic) profile.",
+    "category": "Audio",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
